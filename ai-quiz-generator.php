@@ -11,11 +11,6 @@
  * Domain Path: /languages
  */
 
-<?php
-/**
- * คลาสหลักสำหรับ AI Quiz Generator Plugin
- */
-
 if (!defined('ABSPATH')) {
     exit;
 }

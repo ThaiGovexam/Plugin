@@ -11,157 +11,148 @@
  * Domain Path: /languages
  */
 
-// ป้องกันการเข้าถึงไฟล์โดยตรง
+<?php
+/**
+ * คลาสหลักสำหรับ AI Quiz Generator Plugin
+ */
+
 if (!defined('ABSPATH')) {
     exit;
 }
 
-// กำหนดค่าคงที่
-define('AI_QUIZ_VERSION', '1.0.0');
-define('AI_QUIZ_PLUGIN_DIR', plugin_dir_path(__FILE__));
-define('AI_QUIZ_PLUGIN_URL', plugin_dir_url(__FILE__));
-define('AI_QUIZ_PLUGIN_BASENAME', plugin_basename(__FILE__));
-
-// โหลดไฟล์ที่จำเป็น
-require_once AI_QUIZ_PLUGIN_DIR . 'includes/class-ai-quiz-generator.php';
-
-// เริ่มต้น Plugin
-function ai_quiz_generator_init() {
-    $plugin = new AI_Quiz_Generator();
-    $plugin->run();
-}
-add_action('plugins_loaded', 'ai_quiz_generator_init');
-
-// Activation Hook
-register_activation_hook(__FILE__, 'ai_quiz_generator_activate');
-function ai_quiz_generator_activate() {
-    // สร้างตารางที่จำเป็น
-    require_once AI_QUIZ_PLUGIN_DIR . 'database/class-queue-table.php';
-    $queue_table = new Quiz_Queue_Table();
-    $queue_table->create_table();
+class AI_Quiz_Generator {
     
-    // ตั้งค่าเริ่มต้น
-    add_option('ai_quiz_default_category', 3);
-    add_option('ai_quiz_api_key', '');
-    add_option('ai_quiz_request_delay', 2000);
+    protected $loader;
+    protected $plugin_name;
+    protected $version;
     
-    // Flush rewrite rules
-    flush_rewrite_rules();
-}
-
-// Deactivation Hook
-register_deactivation_hook(__FILE__, 'ai_quiz_generator_deactivate');
-function ai_quiz_generator_deactivate() {
-    // ล้าง scheduled events
-    wp_clear_scheduled_hook('ai_quiz_process_queue');
-    
-    // Flush rewrite rules
-    flush_rewrite_rules();
-}
-
-// Uninstall Hook
-register_uninstall_hook(__FILE__, 'ai_quiz_generator_uninstall');
-function ai_quiz_generator_uninstall() {
-    // ลบตัวเลือกที่สร้างไว้
-    delete_option('ai_quiz_default_category');
-    delete_option('ai_quiz_api_key');
-    delete_option('ai_quiz_request_delay');
-    
-    // ลบตารางที่สร้างไว้ (ถ้าต้องการ)
-    global $wpdb;
-    $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}ai_quiz_queue");
-    $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}ai_quiz_logs");
-}
-
-// โหลด text domain สำหรับการแปลภาษา
-function ai_quiz_generator_load_textdomain() {
-    load_plugin_textdomain(
-        'ai-quiz-generator',
-        false,
-        dirname(AI_QUIZ_PLUGIN_BASENAME) . '/languages/'
-    );
-}
-add_action('plugins_loaded', 'ai_quiz_generator_load_textdomain');
-
-// เพิ่ม action links ในหน้า plugins
-function ai_quiz_generator_action_links($links) {
-    $settings_link = '<a href="admin.php?page=ai-quiz-generator-settings">' . 
-                     __('Settings', 'ai-quiz-generator') . '</a>';
-    array_unshift($links, $settings_link);
-    return $links;
-}
-add_filter('plugin_action_links_' . AI_QUIZ_PLUGIN_BASENAME, 'ai_quiz_generator_action_links');
-
-// เพิ่ม AJAX handlers
-add_action('wp_ajax_ai_quiz_generate', 'ai_quiz_ajax_generate');
-function ai_quiz_ajax_generate() {
-    check_ajax_referer('ai_quiz_nonce', 'nonce');
-    
-    if (!current_user_can('manage_options')) {
-        wp_send_json_error('Unauthorized');
+    public function __construct() {
+        $this->plugin_name = 'ai-quiz-generator';
+        $this->version = AI_QUIZ_VERSION;
+        
+        $this->load_dependencies();
+        $this->define_admin_hooks();
+        $this->define_public_hooks();
     }
     
-    $position = sanitize_text_field($_POST['position']);
-    $topics = array_map('sanitize_text_field', $_POST['topics']);
-    $questions_per_topic = intval($_POST['questions_per_topic']);
-    
-    // เรียกใช้งานฟังก์ชันสร้างข้อสอบ
-    $generator = new AI_Quiz_Generator();
-    $result = $generator->generate_quiz($position, $topics, $questions_per_topic);
-    
-    if ($result['success']) {
-        wp_send_json_success($result['data']);
-    } else {
-        wp_send_json_error($result['message']);
-    }
-}
-
-// เพิ่ม AJAX handler สำหรับระบบคิว
-add_action('wp_ajax_ai_quiz_add_to_queue', 'ai_quiz_ajax_add_to_queue');
-function ai_quiz_ajax_add_to_queue() {
-    check_ajax_referer('ai_quiz_nonce', 'nonce');
-    
-    if (!current_user_can('manage_options')) {
-        wp_send_json_error('Unauthorized');
+    private function load_dependencies() {
+        // โหลดคลาสที่จำเป็น
+        require_once AI_QUIZ_PLUGIN_DIR . 'includes/class-ays-quiz-integration.php';
+        require_once AI_QUIZ_PLUGIN_DIR . 'includes/class-queue-manager.php';
+        require_once AI_QUIZ_PLUGIN_DIR . 'includes/class-claude-api.php';
+        require_once AI_QUIZ_PLUGIN_DIR . 'admin/class-ai-quiz-admin.php';
+        require_once AI_QUIZ_PLUGIN_DIR . 'database/class-queue-table.php';
     }
     
-    $data = array(
-        'position' => sanitize_text_field($_POST['position']),
-        'topics' => array_map('sanitize_text_field', $_POST['topics']),
-        'questions_per_topic' => intval($_POST['questions_per_topic']),
-        'total_questions' => intval($_POST['total_questions'])
-    );
-    
-    require_once AI_QUIZ_PLUGIN_DIR . 'includes/class-queue-manager.php';
-    $queue_manager = new Quiz_Queue_Manager();
-    $result = $queue_manager->add_to_queue($data);
-    
-    if ($result) {
-        wp_send_json_success('Added to queue successfully');
-    } else {
-        wp_send_json_error('Failed to add to queue');
+    private function define_admin_hooks() {
+        $admin = new AI_Quiz_Admin($this->plugin_name, $this->version);
+        
+        // เพิ่มเมนูในแอดมิน
+        add_action('admin_menu', array($admin, 'add_plugin_admin_menu'));
+        
+        // โหลด CSS และ JS สำหรับแอดมิน
+        add_action('admin_enqueue_scripts', array($admin, 'enqueue_styles'));
+        add_action('admin_enqueue_scripts', array($admin, 'enqueue_scripts'));
+        
+        // เพิ่มหน้าตั้งค่า
+        add_action('admin_init', array($admin, 'register_settings'));
     }
-}
-
-// ตั้งค่า Cron job สำหรับประมวลผลคิว
-if (!wp_next_scheduled('ai_quiz_process_queue')) {
-    wp_schedule_event(time(), 'every_five_minutes', 'ai_quiz_process_queue');
-}
-
-// เพิ่ม custom interval สำหรับ cron
-function ai_quiz_add_cron_interval($schedules) {
-    $schedules['every_five_minutes'] = array(
-        'interval' => 300,
-        'display'  => __('Every 5 Minutes', 'ai-quiz-generator')
-    );
-    return $schedules;
-}
-add_filter('cron_schedules', 'ai_quiz_add_cron_interval');
-
-// Cron hook สำหรับประมวลผลคิว
-add_action('ai_quiz_process_queue', 'ai_quiz_process_queue_callback');
-function ai_quiz_process_queue_callback() {
-    require_once AI_QUIZ_PLUGIN_DIR . 'includes/class-queue-manager.php';
-    $queue_manager = new Quiz_Queue_Manager();
-    $queue_manager->process_next_in_queue();
+    
+    private function define_public_hooks() {
+        // ยังไม่มีฟังก์ชันสำหรับฝั่ง public
+    }
+    
+    public function run() {
+        // เริ่มต้นการทำงานของ Plugin
+        // ตัดการตรวจสอบ dependencies ออก
+    }
+    
+    /**
+     * ฟังก์ชันหลักสำหรับสร้างข้อสอบ
+     */
+    public function generate_quiz($position, $topics, $questions_per_topic) {
+        try {
+            // ตรวจสอบ API Key
+            $api_key = get_option('ai_quiz_api_key');
+            if (empty($api_key)) {
+                throw new Exception('API Key not configured');
+            }
+            
+            // เริ่มต้นคลาสที่จำเป็น
+            $ays_integration = new AYS_Quiz_Integration();
+            $claude_api = new Claude_API($api_key);
+            
+            // ดึงหมวดหมู่เริ่มต้น
+            $category_id = get_option('ai_quiz_default_category', 3);
+            
+            $generated_questions = array();
+            $total_questions = 0;
+            
+            // วนลูปสร้างข้อสอบตามหัวข้อ
+            foreach ($topics as $topic) {
+                for ($i = 0; $i < $questions_per_topic; $i++) {
+                    // เรียก Claude API
+                    $ai_response = $claude_api->generate_question($position, $topic);
+                    
+                    if (!$ai_response['success']) {
+                        continue;
+                    }
+                    
+                    // สร้างข้อสอบในระบบ AYS Quiz
+                    $question_id = $ays_integration->create_question($ai_response['data'], $category_id);
+                    
+                    if ($question_id) {
+                        // สร้างคำตอบ
+                        $ays_integration->create_answers($question_id, $ai_response['data']['answers']);
+                        
+                        // สร้าง tag ตาม Column C
+                        $column_c = sprintf(
+                            "แนวข้อสอบ%s ชุดที่ %d",
+                            $position,
+                            ceil(($total_questions + 1) / 100)
+                        );
+                        $ays_integration->create_question_tag($question_id, $column_c);
+                        
+                        $generated_questions[] = $question_id;
+                        $total_questions++;
+                    }
+                    
+                    // หน่วงเวลาเพื่อป้องกัน rate limit
+                    usleep(get_option('ai_quiz_request_delay', 2000) * 1000);
+                }
+            }
+            
+            return array(
+                'success' => true,
+                'data' => array(
+                    'question_ids' => $generated_questions,
+                    'total_generated' => $total_questions
+                )
+            );
+            
+        } catch (Exception $e) {
+            return array(
+                'success' => false,
+                'message' => $e->getMessage()
+            );
+        }
+    }
+    
+    /**
+     * ฟังก์ชันตรวจสอบสถานะการทำงาน
+     */
+    public function get_status() {
+        $queue_manager = new Quiz_Queue_Manager();
+        
+        return array(
+            'queue_status' => $queue_manager->get_queue_status(),
+            'api_status' => $this->check_api_status(),
+            'last_run' => get_option('ai_quiz_last_run', 'Never')
+        );
+    }
+    
+    private function check_api_status() {
+        $api_key = get_option('ai_quiz_api_key');
+        return !empty($api_key) ? 'configured' : 'not_configured';
+    }
 }

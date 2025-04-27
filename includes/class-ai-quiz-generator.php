@@ -51,24 +51,7 @@ class AI_Quiz_Generator {
     
     public function run() {
         // เริ่มต้นการทำงานของ Plugin
-        $this->check_dependencies();
-    }
-    
-    private function check_dependencies() {
-        // ตรวจสอบว่า AYS Quiz Plugin ถูกติดตั้งและเปิดใช้งาน
-        if (!class_exists('Quiz_Maker_Ays')) {
-            add_action('admin_notices', array($this, 'ays_quiz_missing_notice'));
-            return false;
-        }
-        return true;
-    }
-    
-    public function ays_quiz_missing_notice() {
-        ?>
-        <div class="notice notice-error">
-            <p><?php _e('AI Quiz Generator requires AYS Quiz Maker plugin to be installed and activated.', 'ai-quiz-generator'); ?></p>
-        </div>
-        <?php
+        // ตัดการตรวจสอบ dependencies ออก
     }
     
     /**

@@ -20,25 +20,26 @@ class AI_Quiz_Admin {
     /**
      * เพิ่มเมนูในแอดมิน
      */
-    public function add_plugin_admin_menu() {
-        add_menu_page(
-            'AI Quiz Generator',                     // Page title
-            'AI Quiz Generator',                     // Menu title
-            'manage_options',                        // Capability
-            'ai-quiz-generator',                     // Menu slug
-            array($this, 'display_dashboard_page'),  // Callback
-            'dashicons-edit',                        // Icon
-            30                                       // Position
-        );
-        
-        add_submenu_page(
-            'ai-quiz-generator',                     // Parent slug
-            'สร้างข้อสอบ',                            // Page title
-            'สร้างข้อสอบ',                            // Menu title
-            'manage_options',                        // Capability
-            'ai-quiz-generator',                     // Menu slug
-            array($this, 'display_dashboard_page')   // Callback
-        );
+   public function add_plugin_admin_menu() {
+    add_menu_page(
+        'AI Quiz Generator',                     // Page title
+        'AI Quiz Generator',                     // Menu title
+        'manage_options',                        // Capability
+        'ai-quiz-generator',                     // Menu slug
+        array($this, 'display_dashboard_page'),  // Callback
+        'dashicons-edit',                        // Icon
+        30                                       // Position
+    );
+    
+    // เพิ่มเมนูย่อย
+    add_submenu_page(
+        'ai-quiz-generator',
+        'สร้างข้อสอบ',
+        'สร้างข้อสอบ',
+        'manage_options',
+        'ai-quiz-generator',
+        array($this, 'display_dashboard_page')
+    );
         
         add_submenu_page(
             'ai-quiz-generator',
